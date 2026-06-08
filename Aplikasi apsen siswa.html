@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduPresence - Smart Attendance System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+        }
+
+        .sidebar-link:hover { background: #eff6ff; color: #2563eb; }
+        .sidebar-link.active { background: #2563eb; color: white; }
+
+        .attendance-btn.active-hadir { background-color: #10b981; color: white; border-color: #10b981; }
+        .attendance-btn.active-izin { background-color: #3b82f6; color: white; border-color: #3b82f6; }
+        .attendance-btn.active-sakit { background-color: #6366f1; color: white; border-color: #6366f1; }
+        .attendance-btn.active-alpha { background-color: #ef4444; color: white; border-color: #ef4444; }
+        .attendance-btn.active-terlambat { background-color: #f59e0b; color: white; border-color: #f59e0b; }
+        
+        .modal-enter { animation: modalFadeIn 0.3s ease-out; }
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .class-badge {
+            @apply px-2 py-0.5 rounded text-[10px] font-bold uppercase;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app" class="min-h-screen flex">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 shadow-sm z-20">
+            <div class="p-6">
+                <div class="flex items-center gap-2 text-blue-600 font-bold text-2xl">
+                    <i class="fas fa-graduation-cap"></i>
+                    <span>EduPresence</span>
+                </div>
+            </div>
+            <nav class="flex-1 px-4 space-y-1" id="nav-links"></nav>
+            <div class="p-6 border-t border-slate-100">
+                <button onclick="logout()" class="flex items-center gap-3 text-slate-500 hover:text-red-600 transition w-full">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span class="font-medium">Keluar</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 z-10">
+                <div class="flex items-center gap-4">
+                    <button class="md:hidden text-slate-600 text-xl"><i class="fas fa-bars"></i></button>
+                    <div id="currentTime" class="text-slate-500 font-medium hidden sm:block"></div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <!-- Status Database Cloud -->
+                    <div id="cloudStatus" class="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-200">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span id="cloudStatusText">Menghubungkan ke Cloud...</span>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <div class="text-right hidden sm:block">
+                            <p id="userName" class="text-sm font-semibold text-slate-800">Memuat...</p>
+                            <p id="userRole" class="text-xs text-slate-500">Administrator Sekolah</p>
+                        </div>
+                        <img id="userAvatar" src="" class="h-10 w-10 rounded-full border border-slate-200" alt="Avatar">
+                    </div>
+                </div>
+            </header>
+
+            <!-- Sub Header: Class Filter -->
+            <div class="bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-4 overflow-x-auto no-scrollbar">
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Pilih Kelas:</span>
+                <div id="classTabs" class="flex gap-2"></div>
+            </div>
+
+            <div id="contentArea" class="flex-1 overflow-y-auto p-4 md:p-6"></div>
+        </main>
+    </div>
+
+    <!-- Modal Input Massal -->
+    <div id="modalMassal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[150] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 modal-enter">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-slate-800">Tambah Siswa Baru</h3>
+                <button onclick="toggleModal('modalMassal', false)" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-xs font-bold text-slate-500 mb-2 uppercase">Target Kelas</label>
+                <select id="targetClassSelect" class="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                    <option value="7">Kelas 7</option>
+                    <option value="8">Kelas 8</option>
+                    <option value="9">Kelas 9</option>
+                    <option value="10">Kelas 10</option>
+                    <option value="11">Kelas 11</option>
+                    <option value="12">Kelas 12</option>
+                </select>
+            </div>
+
+            <p class="text-sm text-slate-500 mb-2">Daftar Nama (Pisahkan dengan baris baru):</p>
+            <textarea id="bulkInputArea" rows="8" placeholder="Contoh:&#10;Andi Wijaya&#10;Budi Santoso" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none font-sans text-sm mb-4"></textarea>
+            
+            <div class="flex gap-3">
+                <button onclick="processBulkInput()" class="flex-1 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition">Simpan Data</button>
+                <button onclick="toggleModal('modalMassal', false)" class="flex-1 bg-slate-100 text-slate-600 font-bold py-3 rounded-xl hover:bg-slate-200 transition">Batal</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Detail Profil Siswa -->
+    <div id="modalProfil" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[160] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 modal-enter overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center pb-4 border-b border-slate-100 shrink-0">
+                <h3 class="text-xl font-bold text-slate-800">Profil Detail Siswa</h3>
+                <button onclick="toggleModal('modalProfil', false)" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <!-- Detail Content -->
+            <div id="profilContent" class="overflow-y-auto py-6 space-y-6 flex-1">
+                <!-- Data akan disisipkan via javascript -->
+            </div>
+
+            <div class="pt-4 border-t border-slate-100 flex gap-3 shrink-0">
+                <button onclick="toggleModal('modalProfil', false)" class="w-full bg-slate-100 text-slate-600 font-bold py-3 rounded-xl hover:bg-slate-200 transition text-sm">Tutup Profil</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="loginOverlay" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl text-3xl mb-4">
+                <i class="fas fa-graduation-cap"></i>
+            </div>
+            <h1 class="text-2xl font-bold text-slate-800">EduPresence</h1>
+            <p class="text-slate-500 mb-8">Sistem Absensi Terpadu Kelas 7-12</p>
+            <input type="text" id="loginUser" placeholder="Nama Guru..." class="w-full px-4 py-3 rounded-xl border border-slate-200 mb-4 focus:ring-2 focus:ring-blue-500 outline-none">
+            <button onclick="handleLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition">Masuk Sistem</button>
+        </div>
+    </div>
+
+    <!-- Firebase SDK Modules & Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Konfigurasi Database & Auth
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'school-attendance-default';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+
+        let db = null;
+        let auth = null;
+        let isFirebaseConnected = false;
+        let currentTeacher = 'Guru'; // Menyimpan nama guru aktif yang sedang login
+
+        const POINTS_CONFIG = {
+            reward: { 'Hadir': 10 },
+            penalty: { 'Alpha': 5, 'Terlambat': 2, 'Izin': 1, 'Sakit': 0 }
+        };
+
+        const AVAILABLE_CLASSES = ["7", "8", "9", "10", "11", "12"];
+        let currentSelectedClass = "7";
+        let attendanceDate = new Date().toISOString().split('T')[0];
+
+        // Data default jika database cloud kosong / pertama kali diaktifkan
+        let students = [
+            { id: 1, name: "Andi Wijaya", class: "7", nis: "1001", attendance: "-", lastDate: "-", lastTeacher: "-", penaltyPoints: 0, rewardPoints: 10, history: [{ date: "2026-05-18", status: "Hadir", note: "Poin awal", teacher: "Sistem" }] },
+            { id: 2, name: "Budi Santoso", class: "7", nis: "1002", attendance: "-", lastDate: "-", lastTeacher: "-", penaltyPoints: 2, rewardPoints: 50, history: [{ date: "2026-05-18", status: "Terlambat", note: "Terlambat 10 menit", teacher: "Guru Piket" }] },
+            { id: 3, name: "Citra Lestari", class: "8", nis: "2001", attendance: "-", lastDate: "-", lastTeacher: "-", penaltyPoints: 0, rewardPoints: 20, history: [] }
+        ];
+
+        // Inisialisasi Firebase & Otentikasi
+        if (firebaseConfig) {
+            try {
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                const initAuth = async () => {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                };
+                initAuth();
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        isFirebaseConnected = true;
+                        document.getElementById('cloudStatus').className = "flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-200 shadow-sm";
+                        document.getElementById('cloudStatusText').innerText = "Tersambung ke Cloud";
+                        startRealtimeSync();
+                    } else {
+                        setOfflineStatus();
+                    }
+                });
+            } catch (err) {
+                console.error("Firebase init failed:", err);
+                setOfflineStatus();
+            }
+        } else {
+            setOfflineStatus();
+        }
+
+        function setOfflineStatus() {
+            isFirebaseConnected = false;
+            document.getElementById('cloudStatus').className = "flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-semibold border border-amber-200 shadow-sm";
+            document.getElementById('cloudStatusText').innerText = "Mode Lokal (Tanpa Cadangan Cloud)";
+        }
+
+        // Jalankan Sinkronisasi Sinkron Realtime Firestore
+        function startRealtimeSync() {
+            if (!isFirebaseConnected || !db) return;
+
+            // Dokumen diletakkan sesuai RULE 1 yang ketat
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'schoolDatabase', 'studentsList');
+
+            onSnapshot(docRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    const cloudData = snapshot.data();
+                    if (cloudData && Array.isArray(cloudData.students)) {
+                        students = cloudData.students;
+                        // Render ulang halaman aktif agar data langsung update di layar
+                        refreshActivePage();
+                    }
+                } else {
+                    // Jika dokumen belum ada, inisialisasi cloud dengan data default awal
+                    saveStudentsToCloud(students);
+                }
+            }, (error) => {
+                console.error("Firestore read error:", error);
+            });
+        }
+
+        // Tulis ulang perubahan siswa langsung ke Cloud Firestore
+        async function saveStudentsToCloud(updatedStudents) {
+            if (!isFirebaseConnected || !db) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'schoolDatabase', 'studentsList');
+                await setDoc(docRef, { students: updatedStudents });
+            } catch (error) {
+                console.error("Gagal menyimpan ke cloud database:", error);
+            }
+        }
+
+        window.onload = () => {
+            updateClock();
+            setInterval(updateClock, 1000);
+            renderNav();
+            renderClassTabs();
+        };
+
+        function updateClock() {
+            const now = new Date();
+            const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+            document.getElementById('currentTime').innerText = now.toLocaleDateString('id-ID', options);
+        }
+
+        function renderNav() {
+            const nav = document.getElementById('nav-links');
+            const items = [
+                { id: 'bulk', label: 'Absensi Harian', icon: 'fa-calendar-check' },
+                { id: 'weekly', label: 'Absen Mingguan', icon: 'fa-calendar-week' }, // Tab Absen Mingguan baru
+                { id: 'manage', label: 'Data Siswa', icon: 'fa-users-cog' },
+                { id: 'dashboard', label: 'Statistik & Ranking', icon: 'fa-chart-line' }
+            ];
+            nav.innerHTML = items.map(item => `
+                <button onclick="switchPage('${item.id}')" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl transition font-medium text-slate-600" id="link-${item.id}">
+                    <i class="fas ${item.icon} w-5"></i>
+                    <span>${item.label}</span>
+                </button>
+            `).join('');
+        }
+
+        function renderClassTabs() {
+            const container = document.getElementById('classTabs');
+            container.innerHTML = AVAILABLE_CLASSES.map(cls => `
+                <button onclick="selectClass('${cls}')" 
+                    class="px-4 py-1.5 rounded-full text-xs font-bold transition-all border
+                    ${currentSelectedClass === cls ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-500 hover:border-blue-300'}">
+                    KELAS ${cls}
+                </button>
+            `).join('');
+        }
+
+        function selectClass(cls) {
+            currentSelectedClass = cls;
+            renderClassTabs();
+            refreshActivePage();
+        }
+
+        function refreshActivePage() {
+            const activeLink = document.querySelector('.sidebar-link.active');
+            if (activeLink) {
+                const pageId = activeLink.id.replace('link-', '');
+                switchPage(pageId);
+            }
+        }
+
+        function handleLogin() {
+            const name = document.getElementById('loginUser').value || 'Guru';
+            currentTeacher = name; // Rekam nama guru pengabsen
+            document.getElementById('loginOverlay').classList.add('hidden');
+            document.getElementById('userName').innerText = name;
+            document.getElementById('userAvatar').src = `https://ui-avatars.com/api/?name=${name}&background=2563eb&color=fff`;
+            switchPage('bulk');
+        }
+
+        function logout() { document.getElementById('loginOverlay').classList.remove('hidden'); }
+
+        function switchPage(pageId) {
+            document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+            document.getElementById(`link-${pageId}`)?.classList.add('active');
+            
+            if (pageId === 'bulk') renderAttendance();
+            else if (pageId === 'weekly') renderWeeklyAttendance(); // Halaman Absen Mingguan
+            else if (pageId === 'manage') renderManage();
+            else if (pageId === 'dashboard') renderDashboard();
+        }
+
+        function getFilteredStudents() {
+            return students.filter(s => s.class === currentSelectedClass);
+        }
+
+        function formatIndonesianDate(dateString) {
+            if (!dateString || dateString === "-") return "-";
+            const dateObj = new Date(dateString);
+            if (isNaN(dateObj)) return dateString;
+            const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+            return dateObj.toLocaleDateString('id-ID', options);
+        }
+
+        function handleDateChange(val) {
+            attendanceDate = val;
+        }
+
+        // Dapatkan range tanggal Senin s.d Jumat berdasarkan tanggal input referensi
+        function getWeekDates(baseDateStr) {
+            const baseDate = new Date(baseDateStr);
+            const day = baseDate.getDay();
+            // Atur perbedaan hari untuk mendapatkan hari Senin
+            const mondayDiff = baseDate.getDate() - day + (day === 0 ? -6 : 1);
+            const monday = new Date(baseDate.setDate(mondayDiff));
+            
+            const dates = [];
+            for (let i = 0; i < 5; i++) { // Ambil Senin sampai Jumat
+                const nextDate = new Date(monday);
+                nextDate.setDate(monday.getDate() + i);
+                dates.push(nextDate.toISOString().split('T')[0]);
+            }
+            return dates;
+        }
+
+        // Tampilan Absensi Harian
+        function renderAttendance() {
+            const filtered = getFilteredStudents();
+            document.getElementById('contentArea').innerHTML = `
+                <div class="space-y-6">
+                    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-800">Absensi Kelas ${currentSelectedClass}</h2>
+                            <p class="text-slate-500 text-sm">Menampilkan ${filtered.length} siswa di kelas ini.</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label for="attendanceDatePicker" class="text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Pilih Hari / Tanggal Absen:</label>
+                            <input type="date" id="attendanceDatePicker" value="${attendanceDate}" onchange="handleDateChange(this.value)" 
+                                class="px-3 py-1.5 text-sm rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-slate-700 font-medium">
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold tracking-widest border-b border-slate-200">
+                                <tr>
+                                    <th class="px-6 py-4">Siswa</th>
+                                    <th class="px-6 py-4">Status Kehadiran & Riwayat</th>
+                                    <th class="px-6 py-4 text-center">Poin (Prestasi | Pinalti)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                ${filtered.length === 0 ? `<tr><td colspan="3" class="px-6 py-12 text-center text-slate-400">Belum ada siswa di Kelas ${currentSelectedClass}.</td></tr>` : 
+                                  filtered.map(s => `
+                                    <tr class="hover:bg-slate-50/50 transition">
+                                        <td class="px-6 py-4">
+                                            <div onclick="viewStudentProfil(${s.id})" class="cursor-pointer group">
+                                                <div class="font-bold text-slate-800 group-hover:text-blue-600 transition flex items-center gap-2">
+                                                    <span>${s.name}</span>
+                                                    <i class="fas fa-info-circle text-[10px] text-slate-300 group-hover:text-blue-500 transition"></i>
+                                                </div>
+                                                <div class="text-[10px] text-slate-400 font-mono">${s.nis}</div>
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4">
+                                            <div class="flex flex-col gap-2">
+                                                <div class="flex gap-1">
+                                                    ${['Hadir', 'Izin', 'Sakit', 'Terlambat', 'Alpha'].map(type => `
+                                                        <button onclick="updateAttendance(${s.id}, '${type}')" 
+                                                            class="attendance-btn px-2 py-1.5 rounded-lg border border-slate-200 text-[9px] font-black transition
+                                                            ${s.attendance === type ? getActiveClass(type) : 'bg-white text-slate-400 hover:border-slate-300'}">
+                                                            ${type.toUpperCase()}
+                                                        </button>
+                                                    `).join('')}
+                                                </div>
+                                                <div class="text-[10px] text-slate-400 flex flex-wrap items-center gap-1.5">
+                                                    <i class="far fa-calendar-alt text-xs"></i>
+                                                    <span>Absensi Terakhir: <strong class="text-slate-600">${formatIndonesianDate(s.lastDate)}</strong></span>
+                                                    ${s.lastTeacher && s.lastTeacher !== '-' ? `
+                                                        <span class="inline-flex items-center gap-1 bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[9px] font-medium border border-slate-200">
+                                                            <i class="fas fa-user-tie text-[8px]"></i> Oleh: ${s.lastTeacher}
+                                                        </span>
+                                                    ` : ''}
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4 text-center">
+                                            <div class="flex justify-center gap-4">
+                                                <span class="font-black text-emerald-600"><i class="fas fa-star text-[8px] mr-1"></i>${s.rewardPoints}</span>
+                                                <span class="font-black text-rose-500"><i class="fas fa-exclamation-triangle text-[8px] mr-1"></i>${s.penaltyPoints}</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Tampilan Baru: Absensi Kisi Mingguan (Grid Pekanan)
+        function renderWeeklyAttendance() {
+            const filtered = getFilteredStudents();
+            const weekDates = getWeekDates(attendanceDate);
+            const daysName = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"];
+
+            // Format tanggal header kolom yang rapi
+            const formatHeaderDate = (dStr) => {
+                const parts = dStr.split('-');
+                return `${parseInt(parts[2])}/${parseInt(parts[1])}`;
+            };
+
+            document.getElementById('contentArea').innerHTML = `
+                <div class="space-y-6">
+                    <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-800">Absensi Mingguan Kelas ${currentSelectedClass}</h2>
+                            <p class="text-slate-500 text-sm">Kelola absensi satu pekan (Senin - Jumat) dalam satu tabel praktis.</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button onclick="changeWeek(-7)" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1">
+                                <i class="fas fa-chevron-left"></i> Sebelum
+                            </button>
+                            <input type="date" id="weeklyDatePicker" value="${attendanceDate}" onchange="handleWeeklyDateChange(this.value)" 
+                                class="px-3 py-1.5 text-sm rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-slate-700 font-medium">
+                            <button onclick="changeWeek(7)" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1">
+                                Berikut <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse min-w-[800px]">
+                                <thead class="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold tracking-widest border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-6 py-4 w-1/4">Siswa</th>
+                                        ${weekDates.map((dStr, idx) => `
+                                            <th class="px-2 py-4 text-center">
+                                                <div>${daysName[idx]}</div>
+                                                <div class="text-[9px] text-slate-400 font-mono font-medium mt-0.5">${formatHeaderDate(dStr)}</div>
+                                            </th>
+                                        `).join('')}
+                                        <th class="px-6 py-4 text-center w-1/5">Ringkasan Pekan Ini</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    ${filtered.length === 0 ? `<tr><td colspan="7" class="px-6 py-12 text-center text-slate-400">Belum ada siswa di Kelas ${currentSelectedClass}.</td></tr>` : 
+                                      filtered.map(s => {
+                                          // Hitung ringkasan mingguan berdasarkan histori tanggal mingguan
+                                          let counts = { Hadir: 0, Izin: 0, Sakit: 0, Terlambat: 0, Alpha: 0 };
+                                          weekDates.forEach(dStr => {
+                                              const rec = s.history?.find(h => h.date === dStr);
+                                              if (rec && counts[rec.status] !== undefined) counts[rec.status]++;
+                                          });
+
+                                          return `
+                                            <tr class="hover:bg-slate-50/50 transition">
+                                                <td class="px-6 py-4">
+                                                    <div onclick="viewStudentProfil(${s.id})" class="cursor-pointer group">
+                                                        <div class="font-bold text-slate-800 group-hover:text-blue-600 transition flex items-center gap-1.5">
+                                                            <span>${s.name}</span>
+                                                            <i class="fas fa-info-circle text-[9px] text-slate-300"></i>
+                                                        </div>
+                                                        <div class="text-[9px] text-slate-400 font-mono">${s.nis}</div>
+                                                    </div>
+                                                </td>
+                                                ${weekDates.map(dStr => {
+                                                    const rec = s.history?.find(h => h.date === dStr);
+                                                    const status = rec ? rec.status : '-';
+                                                    return `
+                                                        <td class="px-2 py-4 text-center">
+                                                            <div class="relative inline-block">
+                                                                <select onchange="updateWeeklyCell(${s.id}, '${dStr}', this.value)" 
+                                                                    class="appearance-none w-9 h-9 rounded-full font-extrabold text-xs text-center border cursor-pointer focus:outline-none transition-colors duration-150 ${getWeeklySelectColorClass(status)}">
+                                                                    <option value="-" ${status === '-' ? 'selected' : ''}>-</option>
+                                                                    <option value="Hadir" ${status === 'Hadir' ? 'selected' : ''}>H</option>
+                                                                    <option value="Izin" ${status === 'Izin' ? 'selected' : ''}>I</option>
+                                                                    <option value="Sakit" ${status === 'Sakit' ? 'selected' : ''}>S</option>
+                                                                    <option value="Terlambat" ${status === 'Terlambat' ? 'selected' : ''}>T</option>
+                                                                    <option value="Alpha" ${status === 'Alpha' ? 'selected' : ''}>A</option>
+                                                                </select>
+                                                            </div>
+                                                        </td>
+                                                    `;
+                                                }).join('')}
+                                                <td class="px-6 py-4 text-center">
+                                                    <div class="flex flex-wrap justify-center gap-1.5 text-[9px] font-bold">
+                                                        ${counts.Hadir > 0 ? `<span class="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-md">${counts.Hadir} H</span>` : ''}
+                                                        ${counts.Izin > 0 ? `<span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-md">${counts.Izin} I</span>` : ''}
+                                                        ${counts.Sakit > 0 ? `<span class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-md">${counts.Sakit} S</span>` : ''}
+                                                        ${counts.Terlambat > 0 ? `<span class="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-md">${counts.Terlambat} T</span>` : ''}
+                                                        ${counts.Alpha > 0 ? `<span class="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-md">${counts.Alpha} A</span>` : ''}
+                                                        ${Object.values(counts).reduce((a, b) => a + b, 0) === 0 ? `<span class="text-slate-400 italic font-medium">Belum diabsen</span>` : ''}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                          `;
+                                      }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Tentukan kelas warna latar belakang dari lingkaran dropdown mingguan
+        function getWeeklySelectColorClass(status) {
+            switch(status) {
+                case 'Hadir': return 'bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600';
+                case 'Izin': return 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600';
+                case 'Sakit': return 'bg-indigo-500 text-white border-indigo-600 hover:bg-indigo-600';
+                case 'Terlambat': return 'bg-amber-500 text-white border-amber-600 hover:bg-amber-600';
+                case 'Alpha': return 'bg-rose-500 text-white border-rose-600 hover:bg-rose-600';
+                default: return 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 hover:text-slate-600';
+            }
+        }
+
+        // Navigasi beralih pekan
+        function changeWeek(days) {
+            const d = new Date(attendanceDate);
+            d.setDate(d.getDate() + days);
+            attendanceDate = d.toISOString().split('T')[0];
+            refreshActivePage();
+        }
+
+        function handleWeeklyDateChange(val) {
+            attendanceDate = val;
+            refreshActivePage();
+        }
+
+        // Fungsi memperbarui absen melalui kisi mingguan
+        function updateWeeklyCell(studentId, dateStr, newStatus) {
+            const s = students.find(x => x.id === studentId);
+            if (!s) return;
+
+            if (!s.history) s.history = [];
+            const existingIndex = s.history.findIndex(h => h.date === dateStr);
+            const oldStatus = existingIndex !== -1 ? s.history[existingIndex].status : '-';
+
+            if (oldStatus === newStatus) return;
+
+            // 1. Revert atau hilangkan pengaruh poin status lama
+            if (oldStatus === 'Hadir') {
+                s.rewardPoints = Math.max(0, s.rewardPoints - POINTS_CONFIG.reward['Hadir']);
+            } else if (POINTS_CONFIG.penalty[oldStatus] > 0) {
+                s.penaltyPoints = Math.max(0, s.penaltyPoints - POINTS_CONFIG.penalty[oldStatus]);
+            }
+
+            // 2. Tambah poin dari status yang baru terpilih
+            let logPointsInfo = "";
+            if (newStatus === 'Hadir') {
+                s.rewardPoints += POINTS_CONFIG.reward['Hadir'];
+                logPointsInfo = `+${POINTS_CONFIG.reward['Hadir']} Poin Prestasi`;
+            } else if (POINTS_CONFIG.penalty[newStatus] > 0) {
+                s.penaltyPoints += POINTS_CONFIG.penalty[newStatus];
+                logPointsInfo = `+${POINTS_CONFIG.penalty[newStatus]} Poin Pinalti`;
+            }
+
+            // 3. Modifikasi array history log
+            if (newStatus === '-') {
+                if (existingIndex !== -1) {
+                    s.history.splice(existingIndex, 1);
+                }
+            } else {
+                const newRecord = {
+                    date: dateStr,
+                    status: newStatus,
+                    note: logPointsInfo || "Status mingguan diperbarui",
+                    teacher: currentTeacher
+                };
+                if (existingIndex !== -1) {
+                    s.history[existingIndex] = newRecord;
+                } else {
+                    s.history.unshift(newRecord);
+                }
+            }
+
+            // 4. Perbarui indikator absensi harian terakhir berdasarkan histori terbaru
+            if (s.history.length > 0) {
+                const sortedHistory = [...s.history].sort((a, b) => b.date.localeCompare(a.date));
+                s.attendance = sortedHistory[0].status;
+                s.lastDate = sortedHistory[0].date;
+                s.lastTeacher = sortedHistory[0].teacher;
+            } else {
+                s.attendance = "-";
+                s.lastDate = "-";
+                s.lastTeacher = "-";
+            }
+
+            // Sinkronisasi data ke Cloud Firestore
+            saveStudentsToCloud(students);
+            refreshActivePage();
+            showToast(`Absensi ${s.name} (${formatIndonesianDate(dateStr)}) diubah menjadi ${newStatus}.`, 'success');
+        }
+
+        function getActiveClass(type) { return `active-${type.toLowerCase()}`; }
+
+        function updateAttendance(id, status) {
+            const s = students.find(x => x.id === id);
+            if (!s) return;
+
+            let logPointsInfo = "";
+            if (status === 'Hadir') {
+                s.rewardPoints += POINTS_CONFIG.reward['Hadir'];
+                logPointsInfo = `+${POINTS_CONFIG.reward['Hadir']} Poin Prestasi`;
+                showToast(`${s.name} ${logPointsInfo}!`, 'reward');
+            } else if (POINTS_CONFIG.penalty[status] > 0) {
+                s.penaltyPoints += POINTS_CONFIG.penalty[status];
+                logPointsInfo = `+${POINTS_CONFIG.penalty[status]} Poin Pinalti`;
+                showToast(`${s.name} ${logPointsInfo}.`, 'penalty');
+            }
+
+            s.attendance = status;
+            s.lastDate = attendanceDate;
+            s.lastTeacher = currentTeacher; // Mengisi nama guru yang login saat ini
+            
+            if(!s.history) s.history = [];
+            s.history.unshift({
+                date: attendanceDate,
+                status: status,
+                note: logPointsInfo || "Status diperbarui",
+                teacher: currentTeacher // Mencatat nama guru pengabsen di riwayat log
+            });
+
+            // Tulis ulang ke database
+            saveStudentsToCloud(students);
+            renderAttendance();
+        }
+
+        function viewStudentProfil(id) {
+            const s = students.find(x => x.id === id);
+            if (!s) return;
+
+            const profilContent = document.getElementById('profilContent');
+            const initials = s.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+
+            // Memisahkan riwayat Hadir dan Alpa (Alpha) secara rinci
+            const historyList = s.history || [];
+            const listHadir = historyList.filter(h => h.status === 'Hadir');
+            const listAlpa = historyList.filter(h => h.status === 'Alpha');
+
+            profilContent.innerHTML = `
+                <div class="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                    <div class="h-16 w-16 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold text-2xl uppercase shadow-inner">
+                        ${initials}
+                    </div>
+                    <div>
+                        <h4 class="text-lg font-bold text-slate-800">${s.name}</h4>
+                        <div class="flex items-center gap-2 mt-1">
+                            <span class="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">Kelas ${s.class}</span>
+                            <span class="text-xs text-slate-400 font-mono">NIS: ${s.nis}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 text-center">
+                        <div class="text-xs font-bold text-emerald-600 uppercase flex items-center justify-center gap-1.5">
+                            <i class="fas fa-crown"></i> Poin Prestasi
+                        </div>
+                        <div class="text-3xl font-black text-emerald-700 mt-2">${s.rewardPoints}</div>
+                        <p class="text-[10px] text-emerald-500 mt-1">Akumulasi Penghargaan</p>
+                    </div>
+                    <div class="bg-rose-50 border border-rose-100 rounded-2xl p-4 text-center">
+                        <div class="text-xs font-bold text-rose-600 uppercase flex items-center justify-center gap-1.5">
+                            <i class="fas fa-exclamation-triangle"></i> Poin Pinalti
+                        </div>
+                        <div class="text-3xl font-black text-rose-700 mt-2">${s.penaltyPoints}</div>
+                        <p class="text-[10px] text-rose-500 mt-1">Pelanggaran & Kealpaan</p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2">
+                    <h5 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Status Absensi Terakhir</h5>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-slate-500">Tanggal:</span>
+                        <span class="text-sm font-bold text-slate-800">${formatIndonesianDate(s.lastDate)}</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-slate-500">Guru Pengabsen:</span>
+                        <span class="text-sm font-black text-slate-800 flex items-center gap-1">
+                            <i class="fas fa-user-tie text-xs text-blue-500"></i> ${s.lastTeacher || '-'}
+                        </span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-slate-500">Status Absen:</span>
+                        <span class="px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider ${s.attendance !== '-' ? getStatusBadgeClass(s.attendance) : 'bg-slate-200 text-slate-600'}">
+                            ${s.attendance === '-' ? 'BELUM ABSEN' : s.attendance}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Bagian Khusus: Kapan Saja Siswa Hadir & Alpa -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- Sektor Hari Hadir -->
+                    <div class="bg-emerald-50/60 border border-emerald-100 p-4 rounded-2xl flex flex-col">
+                        <h5 class="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5 mb-2.5">
+                            <i class="fas fa-calendar-check text-emerald-600"></i> Hari Hadir (${listHadir.length})
+                        </h5>
+                        <div class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                            ${listHadir.length === 0 ? `
+                                <p class="text-[11px] text-slate-400 italic text-center py-4">Belum ada riwayat hadir.</p>
+                            ` : listHadir.map(h => `
+                                <div class="p-2 bg-white rounded-lg border border-emerald-100 text-[11px]">
+                                    <div class="font-bold text-slate-700">${formatIndonesianDate(h.date)}</div>
+                                    <div class="text-[9px] text-slate-400 mt-0.5 flex items-center gap-1">
+                                        <i class="fas fa-user-tie text-[8px]"></i> Guru: ${h.teacher || 'Sistem'}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Sektor Hari Alpa (Alpha) -->
+                    <div class="bg-rose-50/60 border border-rose-100 p-4 rounded-2xl flex flex-col">
+                        <h5 class="text-xs font-bold text-rose-800 uppercase tracking-wider flex items-center gap-1.5 mb-2.5">
+                            <i class="fas fa-calendar-times text-rose-600"></i> Hari Alpa (${listAlpa.length})
+                        </h5>
+                        <div class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                            ${listAlpa.length === 0 ? `
+                                <p class="text-[11px] text-slate-400 italic text-center py-4">Belum ada riwayat alpa.</p>
+                            ` : listAlpa.map(h => `
+                                <div class="p-2 bg-white rounded-lg border border-rose-100 text-[11px]">
+                                    <div class="font-bold text-slate-700">${formatIndonesianDate(h.date)}</div>
+                                    <div class="text-[9px] text-slate-400 mt-0.5 flex items-center gap-1">
+                                        <i class="fas fa-user-tie text-[8px]"></i> Guru: ${h.teacher || 'Sistem'}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Log Riwayat Absensi Lengkap -->
+                <div class="space-y-3">
+                    <h5 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fas fa-history"></i> Semua Aktivitas Log Absensi
+                    </h5>
+                    <div class="space-y-2 max-h-36 overflow-y-auto pr-1">
+                        ${historyList.length === 0 ? `
+                            <p class="text-xs text-slate-400 italic text-center py-4">Belum ada riwayat tercatat.</p>
+                        ` : historyList.map(h => `
+                            <div class="flex items-start justify-between p-3 bg-white border border-slate-100 rounded-xl hover:border-slate-200 transition text-xs">
+                                <div>
+                                    <div class="font-bold text-slate-700">${formatIndonesianDate(h.date)}</div>
+                                    <div class="text-slate-400 text-[10px] mt-1 flex items-center gap-1">
+                                        <i class="fas fa-user-tie text-[8px] text-slate-400"></i>
+                                        <span>Oleh: <strong class="text-slate-600">${h.teacher || 'Sistem'}</strong></span>
+                                    </div>
+                                    <div class="text-slate-500 text-[10px] mt-0.5 font-medium">${h.note || ''}</div>
+                                </div>
+                                <span class="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide ${getStatusBadgeClass(h.status)}">
+                                    ${h.status}
+                                </span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            toggleModal('modalProfil', true);
+        }
+
+        function getStatusBadgeClass(status) {
+            switch(status) {
+                case 'Hadir': return 'bg-emerald-100 text-emerald-700';
+                case 'Izin': return 'bg-blue-100 text-blue-700';
+                case 'Sakit': return 'bg-indigo-100 text-indigo-700';
+                case 'Terlambat': return 'bg-amber-100 text-amber-700';
+                case 'Alpha': return 'bg-rose-100 text-rose-700';
+                default: return 'bg-slate-100 text-slate-600';
+            }
+        }
+
+        // Tampilan Manajemen Siswa
+        function renderManage() {
+            const filtered = getFilteredStudents();
+            document.getElementById('contentArea').innerHTML = `
+                <div class="space-y-6">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-2xl font-bold text-slate-800">Data Siswa Kelas ${currentSelectedClass}</h2>
+                        <button onclick="toggleModal('modalMassal', true)" class="bg-blue-600 text-white px-5 py-2 rounded-xl font-bold text-sm shadow-lg hover:bg-blue-700 transition">
+                            Tambah Siswa
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        ${filtered.map(s => `
+                            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden hover:shadow-md transition">
+                                <div class="absolute top-0 right-0 p-2">
+                                     <button onclick="deleteStudent(${s.id})" class="text-slate-300 hover:text-rose-500 p-2"><i class="fas fa-trash"></i></button>
+                                </div>
+                                <div onclick="viewStudentProfil(${s.id})" class="flex items-center gap-4 mb-4 cursor-pointer group">
+                                    <div class="h-12 w-12 rounded-full bg-blue-50 group-hover:bg-blue-100 flex items-center justify-center font-bold text-blue-600 text-xl uppercase transition">
+                                        ${s.name.charAt(0)}
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold text-slate-800 group-hover:text-blue-600 transition flex items-center gap-1.5">
+                                            <span>${s.name}</span>
+                                            <i class="fas fa-eye text-[9px] text-slate-300 group-hover:text-blue-500 transition"></i>
+                                        </h4>
+                                        <p class="text-[10px] text-slate-400 font-mono">${s.nis}</p>
+                                    </div>
+                                </div>
+                                <div class="mb-3 text-[10px] text-slate-400 flex items-center gap-1.5">
+                                    <i class="far fa-calendar-alt text-xs"></i>
+                                    <span>Absen Terakhir: <strong class="text-slate-600">${formatIndonesianDate(s.lastDate)}</strong></span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <div class="flex-1 bg-emerald-50 rounded-xl p-2 text-center">
+                                        <div class="text-[8px] font-bold text-emerald-600 uppercase">Prestasi</div>
+                                        <div class="font-black text-emerald-700">${s.rewardPoints}</div>
+                                    </div>
+                                    <div class="flex-1 bg-rose-50 rounded-xl p-2 text-center">
+                                        <div class="text-[8px] font-bold text-rose-600 uppercase">Pinalti</div>
+                                        <div class="font-black text-rose-700">${s.penaltyPoints}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Tampilan Dashboard Statistik
+        function renderDashboard() {
+            const filtered = getFilteredStudents();
+            const ranking = [...filtered].sort((a,b) => b.rewardPoints - a.rewardPoints).slice(0, 5);
+
+            document.getElementById('contentArea').innerHTML = `
+                <div class="space-y-8">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-blue-600 p-6 rounded-3xl text-white shadow-xl">
+                            <p class="text-blue-100 text-[10px] font-bold uppercase tracking-wider">Total Siswa Kelas ${currentSelectedClass}</p>
+                            <h3 class="text-4xl font-black mt-2">${filtered.length}</h3>
+                        </div>
+                        <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                            <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Total Poin Prestasi</p>
+                            <h3 class="text-4xl font-black text-emerald-600 mt-2">${filtered.reduce((a,b) => a + b.rewardPoints, 0)}</h3>
+                        </div>
+                        <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                            <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Total Poin Pinalti</p>
+                            <h3 class="text-4xl font-black text-rose-600 mt-2">${filtered.reduce((a,b) => a + b.penaltyPoints, 0)}</h3>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                        <h3 class="font-bold text-slate-800 mb-6 flex items-center gap-2 uppercase text-xs tracking-widest">
+                            <i class="fas fa-crown text-amber-400"></i> Top 5 Siswa Teladan Kelas ${currentSelectedClass}
+                        </h3>
+                        <div class="space-y-4">
+                            ${ranking.length === 0 ? `<p class="text-slate-400 italic">Belum ada data prestasi.</p>` : 
+                              ranking.map((s, i) => `
+                                <div onclick="viewStudentProfil(${s.id})" class="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-blue-200 cursor-pointer transition">
+                                    <div class="flex items-center gap-4">
+                                        <span class="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">${i+1}</span>
+                                        <div class="flex flex-col">
+                                            <span class="font-bold text-slate-700 hover:text-blue-600 transition flex items-center gap-1.5">
+                                                <span>${s.name}</span>
+                                                <i class="fas fa-info-circle text-[9px] text-slate-300"></i>
+                                            </span>
+                                            <span class="text-[9px] text-slate-400">Absen terakhir: ${formatIndonesianDate(s.lastDate)}</span>
+                                        </div>
+                                    </div>
+                                    <span class="font-black text-emerald-600">${s.rewardPoints} POIN</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleModal(id, show) {
+            document.getElementById(id).classList.toggle('hidden', !show);
+            if(show && id === 'targetClassSelect') document.getElementById('targetClassSelect').value = currentSelectedClass;
+        }
+
+        // Simpan input massal
+        function processBulkInput() {
+            const input = document.getElementById('bulkInputArea').value.trim();
+            const targetClass = document.getElementById('targetClassSelect').value;
+            if (!input) return;
+
+            const newStudents = input.split('\n').filter(n => n.trim() !== "").map(name => ({
+                id: Date.now() + Math.floor(Math.random() * 1000),
+                name: name.trim(),
+                class: targetClass,
+                nis: "NIS-" + (Math.floor(Math.random() * 9000) + 1000),
+                attendance: "-",
+                lastDate: "-",
+                lastTeacher: "-",
+                penaltyPoints: 0,
+                rewardPoints: 0,
+                history: []
+            }));
+
+            students = [...students, ...newStudents];
+            document.getElementById('bulkInputArea').value = "";
+            toggleModal('modalMassal', false);
+            
+            // Simpan pembaruan ke cloud
+            saveStudentsToCloud(students);
+
+            selectClass(targetClass);
+            showToast(`${newStudents.length} siswa berhasil masuk Kelas ${targetClass}.`, 'success');
+        }
+
+        function deleteStudent(id) {
+            students = students.filter(s => s.id !== id);
+            saveStudentsToCloud(students);
+            renderManage();
+        }
+
+        function showToast(msg, type) {
+            const toast = document.createElement('div');
+            const color = type === 'reward' ? 'bg-emerald-600' : (type === 'penalty' ? 'bg-rose-600' : 'bg-blue-600');
+            toast.className = `fixed bottom-6 right-6 ${color} text-white px-6 py-4 rounded-2xl shadow-2xl z-[200] flex items-center gap-3 animate-bounce`;
+            toast.innerHTML = `<i class="fas fa-bell"></i> <span class="text-sm font-bold">${msg}</span>`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3500);
+        }
+
+        // Buka fungsi internal module agar dapat digunakan oleh event listener bawaan HTML (onclick)
+        window.logout = logout;
+        window.toggleModal = toggleModal;
+        window.processBulkInput = processBulkInput;
+        window.deleteStudent = deleteStudent;
+        window.updateAttendance = updateAttendance;
+        window.viewStudentProfil = viewStudentProfil;
+        window.selectClass = selectClass;
+        window.handleDateChange = handleDateChange;
+        window.switchPage = switchPage;
+        window.handleLogin = handleLogin;
+        
+        // Expose navigasi & update cell absensi mingguan
+        window.changeWeek = changeWeek;
+        window.handleWeeklyDateChange = handleWeeklyDateChange;
+        window.updateWeeklyCell = updateWeeklyCell;
+    </script>
+</body>
+</html>
